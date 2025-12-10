@@ -4,8 +4,15 @@ import mediapipe as mp
 video = cv2.VideoCapture(0)
 
 hand = mp.solutions.hands
-Hand =  hand.Hands(max_num_hands = 2) #maximo de maos que queremos identificar
+hands =hand.Hands(
+    max_num_hands=2, #maximo de maos que queremos identificar
+    model_complexity=0,       # <<< mais leve e mais rápido
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
 mpdrw = mp.solutions.drawing_utils
+dedos = [8, 12, 16, 20]
 
 while True:
     check,img = video.read()    #check indica se deu certo, img é a imagem capturada
@@ -17,11 +24,10 @@ while True:
     imgRGB = cv2.cvtColor(img,cv2.COLOR_BGR2RGB) # a img receberá em BGR então transformamos para RGB
     #openCV trabalha com BGR e mediapipe com RGB
     
-    results = Hand.process(imgRGB)  #devolve landmark se é esquerda ou direita e o numero de mãos detectadas
+    results = hands.process(imgRGB)  #devolve landmark se é esquerda ou direita e o numero de mãos detectadas
     
-    handsPoints = results.multi_hand_landmarks  #extrai os pontos que queremos identificar na imagem da mao
+    #handsPoints = results.multi_hand_landmarks  #extrai os pontos que queremos identificar na imagem da mao
     altura, largura, c = img.shape              #pega a altura e largura da imagem
-    dedos = [8, 12, 16, 20]
 
     if not results.multi_hand_landmarks: 
         cv2.imshow("Imagem", img)    # mostra a imagem na tela
@@ -45,31 +51,49 @@ while True:
         for id, cord in enumerate(hand_landmarks.landmark): #id é o numero do ponto e cord é a coordenada x e y
             # O landmark retorna valores entre 0 e 1, entao precisamos multiplicar pela largura e altura da imagem
             cx, cy = int(cord.x * largura), int(cord.y * altura)
-            cv2.putText(img, str(id), (cx, cy), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
+           # cv2.putText(img, str(id), (cx, cy), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
             pontos.append((cx, cy))
 
 
         label = handedness.classification[0].label  # label é 'Left' ou 'Right'
 
         contador = 0
-        
-        # polegar: depende do lado da mão
-        if label == 'Right':
-            if pontos[4][0] < pontos[3][0]: #verifica se o polegar direito está levantado
-                contador += 1
-        else:
-            if pontos[4][0] > pontos[3][0]: #verifica se o polegar esquerdo está levantado
-                contador += 1
+        mao_para_cima = pontos[5][1] < pontos[0][1]
+        direcao_horizontal = pontos[8][0] > pontos[20][0]
 
-            # demais dedos
-        for d in dedos:
-            if pontos[d][1] < pontos[d - 2][1]:
-                contador += 1
+        # polegar: depende do lado da mão
+        if mao_para_cima:            # mao está virada para cima
+            
+            if direcao_horizontal:   #verifica se a palma está virada para frente
+                if pontos[4][0] > pontos[3][0]: #verifica se o polegar direito está levantado
+                    contador += 1
+            else :                              #verifica se a palma está virada para trás
+                if pontos[4][0] < pontos[3][0]: #verifica se o polegar direito está levantado
+                    contador += 1  
+                    
+            for d in dedos:
+                if pontos[d][1] < pontos[d - 3][1]:
+                    contador += 1
+                            
+        else:                                   # mao está virada para baixo
+            if direcao_horizontal:              #palma pra frente
+                if pontos[4][0] > pontos[3][0]: 
+                    contador += 1
+            else:                               #palma pra trás
+                if pontos[4][0] < pontos[3][0]: 
+                    contador += 1
+            
+            for d in dedos:
+                if pontos[d][1] > pontos[d - 3][1]:
+                    contador += 1
+        
+
 
         # desenha um placar próximo ao pulso (landmark 0)
         x0, y0 = pontos[0]
         cv2.rectangle(img, (x0 - 10, y0 - 60), (x0 + 140, y0 - 10), (255, 255, 0), -1)
-        texto = f"{label}: {contador}"
+        orientacao = "CIMA" if mao_para_cima else "BAIXO"
+        texto = f"{label}: {contador} ({orientacao})"
         cv2.putText(img, texto, (x0, y0 - 30), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 0), 2)
       
     cv2.imshow("Imagem", img)
